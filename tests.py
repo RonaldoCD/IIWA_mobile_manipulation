@@ -49,7 +49,7 @@ def simulate_env():
     # RenderDiagram(sim_diagram, max_depth=2)
     # meshcat.SetRealtimeRate()
     meshcat.StartRecording(set_visualizations_while_recording=True)
-    simulator.AdvanceTo(5.0)
+    simulator.AdvanceTo(3.8)
     meshcat.StopRecording()
     meshcat.PublishRecording()
 

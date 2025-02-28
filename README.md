@@ -1,0 +1,1 @@
+![Demo](results/pick_and_place.gif)
