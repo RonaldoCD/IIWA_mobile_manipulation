@@ -19,7 +19,7 @@ class OpenGripper(Action):
         self.start_time = self.time
 
     def run(self, prev_command: Command):
-        print("Time open: ", self.time)
+        # print("Time open: ", self.time)
         finished = (self.time - self.start_time) > self.plan_duration
         command = self.gripper.open(prev_command)
         # brick = self.playground.env.plant.GetBodyByName("brick_center")           

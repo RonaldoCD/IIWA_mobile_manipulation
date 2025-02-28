@@ -49,7 +49,7 @@ def fixIiwaGripperCollisionWithObjectInGripper(scene_graph, body_name, context =
             GeometrySet(inspector.GetAllGeometryIds()), Role.kProximity
     ):
         gid_name = inspector.GetName(inspector.GetFrameId(gid))
-        print("Name: ", gid_name)
+        # print("Name: ", gid_name)
         if "iiwa" in gid_name:
             link_name = gid_name.split("::")[1]
             # print("IIWA Link name: ", link_name)
@@ -546,14 +546,18 @@ class Playground:
         sim_plant: MultibodyPlant = sim_plant
         sim_plant_context = self.env.plant.CreateDefaultContext()
         self.env.plant.SetPositionsAndVelocities(sim_plant_context, continuous_state)
-
+        print("Continuous state WELDED OBJECT: ", continuous_state)
+        
         # weld everything to the world except for mb that we weld to frame
         floating_bodies = []
         for other_mb in self.env.movable_bodies:
             if other_mb.is_same(mb):
                 X_WGripper = self.env.plant.GetFrameByName(frame_name_to_weld).CalcPoseInWorld(sim_plant_context)
                 X_WObject = other_mb.get_pose(self.env.plant, sim_plant_context)
+                print("X_WObject: ", X_WObject)
                 X_GO = X_WGripper.inverse() @ X_WObject
+                print("X_GO translation: ", X_GO.translation())
+                print("X_GO rotation: ", X_GO.rotation())
                 sim_plant.WeldFrames(sim_plant.GetFrameByName(frame_name_to_weld),
                                      other_mb.get_body(sim_plant).body_frame(),
                                      X_GO)

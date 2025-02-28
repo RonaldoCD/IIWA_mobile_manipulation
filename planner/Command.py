@@ -29,8 +29,8 @@ class Gripper(ABC):
 
     def close(self, command: Command, run_time) -> Command:
         position = command.position_command
-        if run_time < 0.25:    
-            command.iiwa.get_close_gripper_position(initial_positions=position, finger_position=0.01)
+        if run_time < 0.4:    
+            command.iiwa.get_close_gripper_position(initial_positions=position, finger_position=0.05)
         else:
             command.iiwa.get_close_gripper_position(initial_positions=position, finger_position=0.01)
         return Command(iiwa=command.iiwa, position_command=position)

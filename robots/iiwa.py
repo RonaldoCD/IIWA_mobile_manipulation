@@ -167,7 +167,7 @@ class IIWA:
                                                   X_WFinal,
                                                   num_control_points=10,
                                                   distance_lower_bound=None,
-                                                  min_duration=0.5,
+                                                  min_duration=0.1,
                                                   max_duration=5
                                                   ):
         plant = self.plant

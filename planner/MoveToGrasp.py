@@ -42,6 +42,17 @@ from utils import *
 from robots import IIWA
 from generate_models.create_environment import filterIiwaCollisionGeometry
 
+from pydrake.geometry.optimization import (
+    HPolyhedron,
+    IrisInConfigurationSpace,
+    IrisOptions,
+    LoadIrisRegionsYamlFile,
+)
+import os.path
+from pydrake.geometry.optimization import GraphOfConvexSetsOptions, Point
+from pydrake.planning import GcsTrajectoryOptimization
+import time
+
 class MoveToGrasp(Action):
     """
     Navigates for IIWA initialization to the pre-grasp pose in front of the object of interest
@@ -60,8 +71,9 @@ class MoveToGrasp(Action):
         self.iiwa = None
         self.current_shelf = None
         self.gripper_name = "wsg"
-        self.ik_solution_preseeded = False
+        self.ik_solution_preseeded = True
         self.gripper_frame_name = GRIPPER_BASE_LINK
+        self.gcs = True
         
     def state_init(self):
         self.start_time = self.time
@@ -78,26 +90,39 @@ class MoveToGrasp(Action):
         query_object = self.iiwa.scene_graph.get_query_output_port().Eval(self.iiwa.get_fresh_scene_graph_context())
         self.q_init = self.iiwa.plant.GetPositions(plant_context)
         # print("q_init: ", self.q_init)
-        if self.ik_solution_preseeded:
-            self.q_goal = np.array([0.75778046, -0.15025176, -0.64249042, 
-                                    -1.87726127, -2.51179728,  0.23095827,
-                                    -0.70537215, -0.02499148, 0.02499081])
+        if self.ik_solution_preseeded: 
+            # self.q_goal = np.array([0.75778046, -0.15025176, -0.64249042, 
+            #                         -1.87726127, -2.51179728,  0.23095827,
+            #                         -0.70537215, -0.02499148, 0.02499081])
+            self.q_goal = np.array([-0.46703898,  0.3326892 ,  0.59999243, 
+                                    -1.53399322, -2.74964844,  0.28085682,
+                                    -0.56446233, -0.05      ,  0.05  ])
+                
         else:
             self.q_goal = self.solve_ik(self.X_WPregrasp, self.gripper_name)
         # print("q_goal: ", self.q_goal)
         
-        iiwa_problem = Iiwa_Problem(self.iiwa, query_object, plant_context, self.q_init, self.q_goal)
-        self.path = self.rrt_planning(iiwa_problem, self.max_iterations, self.prob_sample_goal)
-        # print("PATH: ", self.path)
-        self.path = self.path[1:] if self.path[0] == self.path[1] else self.path # hunt down source of duplicate init later
-        print("  Len Path: ", len(self.path))
-        self.rrt_ix = 0
+        if self.gcs:
+            self.traj_gcs = self.GcsTrajOpt(self.q_init, self.q_goal, "my_iris.yaml")
+        else:
+            iiwa_problem = Iiwa_Problem(self.iiwa, query_object, plant_context, self.q_init, self.q_goal)
+            self.path = self.rrt_planning(iiwa_problem, self.max_iterations, self.prob_sample_goal)
+            # print("PATH: ", self.path)
+            self.path = self.path[1:] if self.path[0] == self.path[1] else self.path # hunt down source of duplicate init later
+            print("  Len Path: ", len(self.path))
+            self.rrt_ix = 0
 
     def run(self, prev_command: Command):
-        
+
         t = self.time - self.start_time
         done = False
 
+        if self.gcs:
+            if matching_q(self.continuous_state[:self.iiwa.num_joints()], self.q_goal, atol=8e-2):
+                done = True
+            # print("Traj gcs: ", self.traj_gcs.value(t))
+            return Command(self.iiwa, self.traj_gcs.value(t)), done
+        
         if self.rrt_ix + 1 < len(self.path) and matching_q(self.continuous_state[:self.iiwa.num_joints()], self.path[self.rrt_ix], atol=1e-1):
             # print("  rrt_ix: ", self.rrt_ix)
             # print("Time Move: ", self.time)
@@ -220,6 +245,45 @@ class MoveToGrasp(Action):
        
         return traj_opt.ReconstructTrajectory(result)
 
+    def GcsTrajOpt(self, q_start, q_goal, iris_filename):
+        iris_regions = {}
+        if os.path.isfile(iris_filename):
+            iris_regions.update(LoadIrisRegionsYamlFile(iris_filename))
+            print(f"Loaded iris regions from {iris_filename}.")
+        else:
+            print(f"{iris_filename} not found. No previously computed regions were loaded.")
+
+        if not iris_regions:
+            print(
+                "No IRIS regions loaded. Make some IRIS regions then come back and try this again."
+            )
+            return
+        assert len(q_start) == len(q_goal)
+        assert len(q_start) == iris_regions[next(iter(iris_regions))].ambient_dimension()
+
+        gcs = GcsTrajectoryOptimization(len(q_start))
+        # TODO(russt): AddRegions should take named regions.
+        regions = gcs.AddRegions(list(iris_regions.values()), order=1)
+        source = gcs.AddRegions([Point(q_start)], order=0)
+        target = gcs.AddRegions([Point(q_goal)], order=0)
+        gcs.AddEdges(source, regions)
+        gcs.AddEdges(regions, target)
+        gcs.AddTimeCost()
+        gcs.AddVelocityBounds(
+            self.iiwa.get_bounded_velocity_lower_limit(), self.iiwa.get_bounded_velocity_upper_limit()
+        )
+
+        options = GraphOfConvexSetsOptions()
+        options.preprocessing = True
+        options.max_rounded_paths = 5
+        start_time = time.time()
+        traj, result = gcs.SolvePath(source, target, options)
+        print(f"GCS solved in {time.time() - start_time} seconds")
+        if not result.is_success():
+            print("Could not find a feasible path from q_start to q_goal")
+            return None
+        return traj
+
     def solve_ik(self, X_WG, gripper_name, max_tries=10):
         ik_context = self.iiwa.get_fresh_plant_context()
         ik = InverseKinematics(self.iiwa.plant, ik_context, with_joint_limits=True)
@@ -292,7 +356,7 @@ class MoveToGrasp(Action):
         # X_WGoal = RigidTransform(R0, p0)
 
         
-        p0 = np.array([7.34858533e-01 - 0.03, -2.35778741e-05, 6.24294858e-01])
+        p0 = np.array([7.34858533e-01 - 0.04, -2.35778741e-05, 6.24294858e-01])
         R0 = RotationMatrix(np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]).T)   
         X_WGoal = RigidTransform(R0, p0)
         self.display_frame(X_WGoal, "MoveToGrasp")

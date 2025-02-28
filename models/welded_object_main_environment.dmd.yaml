@@ -1,0 +1,82 @@
+directives:
+- add_model:
+    name: iiwa
+    file: package://drake_models/iiwa_description/sdf/iiwa7_with_box_collision.sdf
+    default_joint_positions:
+        iiwa_joint_1: [0]
+        iiwa_joint_2: [0.6]
+        iiwa_joint_3: [0]
+        iiwa_joint_4: [-1.75]
+        iiwa_joint_5: [0]
+        iiwa_joint_6: [ 1.0]
+        iiwa_joint_7: [0]
+        
+- add_weld:
+    parent: world
+    child: iiwa::iiwa_link_0
+
+- add_model:
+    name: wsg
+    file: package://manipulation/hydro/schunk_wsg_50_with_tip.sdf
+- add_weld:
+    parent: iiwa::iiwa_link_7
+    child: wsg::body
+    X_PC:
+        translation: [0, 0, 0.114]
+        rotation: !Rpy { deg: [90, 0, 90]}
+
+## Add all objects 
+
+# Shelves
+- add_model:
+    name: shelves_1
+    file: package://manipulation/shelves.sdf
+
+- add_frame:
+    name: shelf_1_origin
+    X_PF:
+      base_frame: world
+      translation: [0.88, 0, 0.4]
+      rotation: !Rpy { deg: [0, 0, 0]}
+
+- add_weld:
+    parent: shelf_1_origin
+    child: shelves_1::shelves_body
+
+- add_model:
+    name: shelves_2
+    file: package://manipulation/shelves.sdf
+
+- add_frame:
+    name: shelf_2_origin
+    X_PF:
+      base_frame: world
+      translation: [-0.73, 0, 0.4]
+      rotation: !Rpy { deg: [0, 0, 180]}
+
+- add_weld:
+    parent: shelf_2_origin
+    child: shelves_2::shelves_body
+
+# Movable objects
+- add_model:
+    name: thing_1
+    file: package://Project/models/brick.sdf
+    # file: file:///home/ronaldocd/Desktop/IMARO/stage/Project/models/brick.sdf
+
+- add_frame:
+    name: thing_1_origin
+    X_PF:
+      base_frame: wsg::body
+      translation: [1.44901618e-05, 1.09397566e-01, 7.66193556e-04]
+      rotation: !Rpy { deg: [-0.08365218343733521, -2.0175594303992304, 89.5578893536958] }
+
+- add_weld:
+    parent: thing_1_origin
+    child: thing_1::brick_center
+
+# model_drivers:
+#     iiwa: !IiwaDriver
+#       control_mode: position_only
+#       hand_model_name: wsg
+#     wsg: !SchunkWsgDriver {}

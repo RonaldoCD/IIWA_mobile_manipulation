@@ -9,6 +9,7 @@ EASY_ENV_URL = "package://Project/models/main_environment.dmd.yaml"
 # IIWA_MODEL_URL = "package://drake_models/iiwa_description/sdf/iiwa7_no_collision.sdf"
 IIWA_MODEL_URL = "package://Project/models/iiwa_gripper.dmd.yaml"
 DEFAULT_SCENARIO_URL = "package://Project/models/main_environment.dmd.yaml"
+DEFAULT_WELDED_SCENARIO_URL = "package://Project/models/welded_object_main_environment.dmd.yaml"
 
 # PR2_MODEL_URL = "package://Shelve_Bot/models/pr2_collisions_filtered.urdf"
 GRIPPER_MODEL_URL = "package://manipulation/hydro/schunk_wsg_50_with_tip.sdf"

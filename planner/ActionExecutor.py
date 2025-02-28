@@ -49,7 +49,6 @@ class ActionExecutor(LeafSystem):
             calc=self.CalcPositionCommand
         )
 
-
         # self.DeclareVectorOutputPort(
         #     name="feedforward_torque",
         #     size=playground.env.plant.num_actuated_dofs(),

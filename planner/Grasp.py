@@ -45,39 +45,35 @@ class Grasp(Action):
 
         plant_context = self.iiwa.env.get_fresh_plant_context()
 
-        # self.gripper_env = self.playground.construct_welded_sim_with_gripper(self.continuous_state)
-        # self.gripper = PR2Gripper(plant=self.gripper_env.plant, base_link_name=GRIPPER_BASE_LINK)
         object_frame: Frame = self.movable_body.get_body(self.iiwa.plant).body_frame()
         X_WObject = object_frame.CalcPoseInWorld(plant_context)
         X_WGrasp = self.get_grasp_frame(X_WObject)
         # try:
         utils.min_distance_collision_checker(self.iiwa.plant, self.iiwa.get_fresh_plant_context(), 0.01)
         self.try_only_to(X_WGrasp)
-        # except Exception as e:
-        #     print(e)
-
+        
     def run(self, prev_command: Command):
         t = self.time - self.start_time
-        print("Time Grasp", self.time)
+        # print("Time Grasp", self.time)
         done = t > self.total_time
         return prev_command.new_command_ignore_grippers(self.my_traj.value(t)), done
 
 
     def try_only_to(self, X_WGrasp):
-        distance_lower_bound = 0.01
+        distance_lower_bound = 0.0025
         # print("distance lower bound is ", distance_lower_bound)
         self.my_traj = self.iiwa.kinematic_trajectory_optimization_gripper(
             self.gripper_frame_name, X_WGrasp,
             distance_lower_bound=distance_lower_bound,
-            num_control_points=10,
-            max_duration=10,
-            min_duration=1
+            num_control_points=5,
+            max_duration=2,
+            min_duration=0.1
         )
         self.total_time = self.my_traj.end_time() - self.my_traj.start_time()
 
     def get_grasp_frame(self, X_WObject):
         
-        offset = np.array([-0.145, 0.0, 0.025])
+        offset = np.array([-0.11, 0.0, 0.025])
         R0 = RotationMatrix(np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]).T)
         # p0 = np.array([0.5, 0.0, 0.3])
         # R0 = RotationMatrix()

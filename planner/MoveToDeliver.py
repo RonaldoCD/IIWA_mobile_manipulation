@@ -33,6 +33,15 @@ from utils import *
 
 from robots import IIWA
 
+from pydrake.geometry.optimization import (
+    LoadIrisRegionsYamlFile,
+)
+
+import os.path
+from pydrake.geometry.optimization import GraphOfConvexSetsOptions, Point
+from pydrake.planning import GcsTrajectoryOptimization
+import time
+
 
 class MoveToDeliver(Action):
     """
@@ -54,8 +63,10 @@ class MoveToDeliver(Action):
         # self.gripper_base_link_name = "l_gripper_palm_link" if "l_gripper" in gripper_name else "r_gripper_palm_link"
         self.gripper_frame_name = GRIPPER_BASE_LINK
         self.ik_solution_preseeded = True
+        self.gcs = True
 
     def state_init(self):
+        print("Starting MOVE TO DELIVER")
         self.start_time = self.time
         self.iiwa = IIWA(self.playground.construct_welded_sim_with_object_welded(
                 continuous_state=self.continuous_state,
@@ -63,28 +74,39 @@ class MoveToDeliver(Action):
                 mb=self.movable_body,
             ))
         plant_context = self.iiwa.get_fresh_plant_context()
-
         X_WG = self.movable_body.X_WO_end
         self.X_WDeliver = self.get_deliver_pose(X_WG)
         
         query_object = self.iiwa.scene_graph.get_query_output_port().Eval(self.iiwa.get_fresh_scene_graph_context())
         self.q_init = self.iiwa.plant.GetPositions(plant_context)
-        
+        print("q_init: ", self.q_init)
         if self.ik_solution_preseeded:
             self.q_goal = np.array([-1.256648681160374, -0.42877396095962583, -1.1408169427411972, 
                                     -1.179779654371061, -1.3890241125896183, 0.7543578588148786, 
-                                    -2.3128262167745812, -0.024999999938508502, 0.024999992236774907])
+                                    -2.3128262167745812, -0.01062164, 0.01063314])
         else:    
             self.q_goal = self.solve_ik(self.X_WDeliver, self.gripper_name)
-        iiwa_problem = Iiwa_Problem(self.iiwa, query_object, plant_context, self.q_init, self.q_goal)
-        self.path = self.rrt_planning(iiwa_problem, self.max_iterations, self.prob_sample_goal)
-        self.path = self.path[1:] if self.path[0] == self.path[1] else self.path
-        print("Move to Deliver Path Len: ", len(self.path))
-        self.rrt_ix = 0
+        # self.q_goal[7] = -0.01062164
+        # self.q_goal[8] = 0.01063314
+        print("Move to deliver goal: ", self.q_goal)
+        if self.gcs:
+            self.traj_gcs = self.GcsTrajOpt(self.q_init, self.q_goal, "my_iris_object_welded.yaml")
+        else:
+            iiwa_problem = Iiwa_Problem(self.iiwa, query_object, plant_context, self.q_init, self.q_goal)
+            self.path = self.rrt_planning(iiwa_problem, self.max_iterations, self.prob_sample_goal)
+            self.path = self.path[1:] if self.path[0] == self.path[1] else self.path
+            print("Move to Deliver Path Len: ", len(self.path))
+            self.rrt_ix = 0
 
     def run(self, prev_command: Command):
         t = self.time - self.start_time
         done = False
+        
+        if self.gcs:
+            if matching_q(self.continuous_state[:self.iiwa.num_joints()], self.q_goal, atol=8e-2):
+                done = True
+            # print("Traj gcs: ", self.traj_gcs.value(t))
+            return Command(self.iiwa, self.traj_gcs.value(t)), done
         
         if self.rrt_ix + 1 < len(self.path) and matching_q_holding_obj(self.continuous_state[:self.iiwa.num_joints()], 
                                                                        self.path[self.rrt_ix], 
@@ -178,6 +200,45 @@ class MoveToDeliver(Action):
        
         return traj_opt.ReconstructTrajectory(result)
 
+    def GcsTrajOpt(self, q_start, q_goal, iris_filename):
+        iris_regions = {}
+        if os.path.isfile(iris_filename):
+            iris_regions.update(LoadIrisRegionsYamlFile(iris_filename))
+            print(f"Loaded iris regions from {iris_filename}.")
+        else:
+            print(f"{iris_filename} not found. No previously computed regions were loaded.")
+
+        if not iris_regions:
+            print(
+                "No IRIS regions loaded. Make some IRIS regions then come back and try this again."
+            )
+            return
+        assert len(q_start) == len(q_goal)
+        assert len(q_start) == iris_regions[next(iter(iris_regions))].ambient_dimension()
+
+        gcs = GcsTrajectoryOptimization(len(q_start))
+        # TODO(russt): AddRegions should take named regions.
+        regions = gcs.AddRegions(list(iris_regions.values()), order=1)
+        source = gcs.AddRegions([Point(q_start)], order=0)
+        target = gcs.AddRegions([Point(q_goal)], order=0)
+        gcs.AddEdges(source, regions)
+        gcs.AddEdges(regions, target)
+        gcs.AddTimeCost()
+        gcs.AddVelocityBounds(
+            self.iiwa.get_bounded_velocity_lower_limit(), self.iiwa.get_bounded_velocity_upper_limit()
+        )
+
+        options = GraphOfConvexSetsOptions()
+        options.preprocessing = True
+        options.max_rounded_paths = 5
+        start_time = time.time()
+        traj, result = gcs.SolvePath(source, target, options)
+        print(f"GCS solved in {time.time() - start_time} seconds")
+        if not result.is_success():
+            print("Could not find a feasible path from q_start to q_goal")
+            return None
+        return traj
+    
     def solve_ik(self, X_WG, gripper_name, max_tries=10):
         ik_context = self.iiwa.get_fresh_plant_context()
         ik = InverseKinematics(self.iiwa.plant, ik_context, with_joint_limits=True)

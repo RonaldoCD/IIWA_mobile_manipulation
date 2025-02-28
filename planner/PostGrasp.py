@@ -53,10 +53,19 @@ class PostGrasp(Action):
             frame_name_to_weld=self.gripper_frame_name,
             mb=self.movable_body,
         ))
+
+        # self.iiwa_iris = IIWA(self.playground.construct_welded_sim_with_object_welded(
+        #     continuous_state=self.continuous_state,
+        #     frame_name_to_weld=self.gripper_frame_name,
+        #     mb=self.movable_body,
+        # ))
+
         # self.gripper_env = self.playground.construct_welded_sim_with_gripper(self.continuous_state)
         # self.gripper = PR2Gripper(plant=self.gripper_env.plant, base_link_name=GRIPPER_BASE_LINK)
 
         plant_context = self.iiwa.env.get_fresh_plant_context()
+
+        print("INITIAL JOINT POSITIONS POST GRASP: ", self.iiwa.plant.GetPositions(plant_context))
 
         mb = self.movable_body
         gripper_frame: Frame = self.iiwa.plant.GetFrameByName(self.gripper_frame_name)
@@ -82,8 +91,10 @@ class PostGrasp(Action):
 
     def run(self, prev_command: Command):
         t = self.time - self.start_time
-        print("Time Post Grasp", self.time)
+        # print("Time Post Grasp", self.time)
         done = t > self.total_time
+        if done:
+            print(" FINAL POSITION POST GRASP: ", self.my_traj.value(t))
         return prev_command.new_command_ignore_grippers(self.my_traj.value(t)), done
 
     def try_only_to(self, X_final_WGripper):
@@ -91,9 +102,9 @@ class PostGrasp(Action):
         self.my_traj = self.iiwa.kinematic_trajectory_optimization_ungrasping(
             self.gripper_frame_name, X_final_WGripper,
             distance_lower_bound=distance_lower_bound,
-            num_control_points=10,
-            max_duration=5,
-            min_duration=1
+            num_control_points=5,
+            max_duration=2,
+            min_duration=0.1
         )
         self.total_time = self.my_traj.end_time() - self.my_traj.start_time()
 
@@ -102,8 +113,11 @@ class PostGrasp(Action):
         # R0 = X_WG.rotation()
         # X_final_WObject = RigidTransform(R0, offset)
         
-        p0 = np.array([0.45, 0.0, 0.64])
-        R0 = RotationMatrix(np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]).T)
+        # p0 = np.array([0.45, 0.0, 0.64])
+        p0 = np.array([7.34858533e-01 - 0.04, -2.35778741e-05, 6.24294858e-01 + 0.02])
+        R0 = RotationMatrix(np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]).T)  
+        
+        # R0 = RotationMatrix(np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]).T)
         X_final_WObject = RigidTransform(R0, p0)
         
         self.display_frame(X_final_WObject, "X_WObject")

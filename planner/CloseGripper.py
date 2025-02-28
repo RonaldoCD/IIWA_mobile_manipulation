@@ -18,7 +18,7 @@ class CloseGripper(Action):
         self.start_time = self.time
 
     def run(self, prev_command: Command):
-        print("Time close: ", self.time)
+        # print("Time close: ", self.time)
         run_time = self.time - self.start_time
         finished = run_time > self.plan_duration
         command = self.gripper.close(prev_command, run_time)
